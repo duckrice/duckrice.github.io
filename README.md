@@ -1,11 +1,8 @@
-# The Duckware website
+# andris.no
 
-The site at [duckware.andris.no](https://duckware.andris.no), served by GitHub Pages.
+The site at [andris.no](https://andris.no), served by GitHub Pages:
 
-The pages are made from the content in `build.mjs`: change it, then run
+- `index.html`: the homepage.
+- `duckware/`: the Duckware website at [andris.no/duckware](https://andris.no/duckware), made from the content in `build.mjs`. Change it, then run `node build.mjs`.
 
-```bash
-node build.mjs
-```
-
-and push. GitHub publishes the new version within a minute or two.
+Push, and GitHub publishes the new version within a minute or two.

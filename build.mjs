@@ -1,11 +1,11 @@
-// Builds the Duckware website (duckware.andris.no) from the content below:
+// Builds the Duckware website (andris.no/duckware) from the content below:
 // a front page and a page per app. GitHub Pages serves the files as they are.
 //   node build.mjs
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = dirname(fileURLToPath(import.meta.url));
+const root = join(dirname(fileURLToPath(import.meta.url)), "duckware");
 const download = (repo, name) => `https://github.com/duckrice/${repo}/releases/latest/download/${name}-Setup.exe`;
 
 const APPS = [
