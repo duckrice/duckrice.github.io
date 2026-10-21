@@ -1,0 +1,304 @@
+/* Dark and plain, like the launcher: near-black, thin lines, monospace for
+   headings and labels, each app in its own colour (--c). */
+:root {
+  --bg: #010409;
+  --panel: #0d1117;
+  --border: #21262d;
+  --text: #e6edf3;
+  --muted: #8b949e;
+  --accent: #4ade80;
+  --mono: Consolas, "Cascadia Mono", "SFMono-Regular", Menlo, monospace;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.6 "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+a {
+  color: var(--c, var(--accent));
+}
+
+main {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 0 20px 40px;
+}
+
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.brand img {
+  width: 32px;
+  height: 32px;
+}
+
+nav {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  font-family: var(--mono);
+  font-size: 14px;
+}
+
+nav a {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+nav a:hover {
+  color: var(--c);
+}
+
+section {
+  margin-top: 48px;
+}
+
+h1 {
+  margin: 0 0 12px;
+  font-size: clamp(28px, 4vw, 42px);
+  line-height: 1.2;
+}
+
+h2 {
+  margin: 0 0 16px;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 15px;
+  font-weight: 400;
+}
+
+h3 {
+  margin: 0 0 6px;
+  font-family: var(--mono);
+  font-size: 16px;
+}
+
+.prompt {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-family: var(--mono);
+}
+
+.prompt span {
+  color: var(--accent);
+}
+
+.lead {
+  max-width: 720px;
+  color: #c9d1d9;
+  font-size: 18px;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin: 20px 0 8px;
+}
+
+.hint,
+.note,
+figcaption {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.note {
+  max-width: 720px;
+}
+
+.btn {
+  display: inline-block;
+  padding: 10px 18px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 14px;
+  text-decoration: none;
+}
+
+.btn:hover {
+  border-color: var(--c, var(--accent));
+}
+
+.btn.primary {
+  border-color: var(--c, var(--accent));
+  color: var(--c, var(--accent));
+}
+
+.btn.primary:hover {
+  background: var(--c, var(--accent));
+  color: var(--bg);
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.card:hover {
+  border-color: var(--c);
+}
+
+.card img {
+  width: 56px;
+  height: 56px;
+  margin-bottom: 8px;
+}
+
+.card p {
+  flex: 1;
+  margin: 0;
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.more {
+  margin-top: 10px;
+  color: var(--c);
+  font-family: var(--mono);
+  font-size: 13px;
+}
+
+.split {
+  display: grid;
+  grid-template-columns: 1fr 1.3fr;
+  gap: 32px;
+  align-items: center;
+}
+
+.shot {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.hero.app {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 28px;
+  align-items: start;
+}
+
+.hero.app h1 {
+  color: var(--c);
+  font-family: var(--mono);
+}
+
+.app-icon {
+  width: 120px;
+  height: 120px;
+}
+
+.shots {
+  display: grid;
+  gap: 24px;
+}
+
+figure {
+  margin: 0;
+}
+
+.features {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+.feature {
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--c);
+  background: var(--panel);
+}
+
+.feature p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.keys {
+  border-collapse: collapse;
+}
+
+.keys td {
+  padding: 6px 18px 6px 0;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+kbd {
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 14px;
+}
+
+.bottom {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 24px 20px 40px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 13px;
+}
+
+@media (max-width: 720px) {
+  .split,
+  .hero.app {
+    grid-template-columns: 1fr;
+  }
+
+  .app-icon {
+    width: 80px;
+    height: 80px;
+  }
+}
