@@ -58,6 +58,7 @@ const APPS = [
       ["Save as Word", "Turn a PDF into a Word document to edit it properly."],
       ["Redact", "Press B and draw over what must go. On saving, the text underneath is really removed from the file, not just covered."],
       ["Page numbers, headers and watermarks", "Page 1 of 9, your own header or footer text, or DRAFT across every page; each can still be moved, and Undo takes them all off."],
+      ["Stamps", "APPROVED, RECEIVED, CONFIDENTIAL or your own words, framed and dated, in the corner of the page."],
     ],
     keys: [
       ["V T E S", "Select, Text, Edit text, Sign"],
@@ -87,6 +88,7 @@ const APPS = [
       ["Tables and equations", "Tables from the toolbar, Tab to the next cell; typeset maths with a preview."],
       ["Search", "Ctrl+E searches every notebook and marks what it finds."],
       ["Tags", "Mark lines Important, Question or Exam (Ctrl+2, 3, 4); one click lists every page with them."],
+      ["Sections", "File the pages of a notebook under headings, such as one per week or topic."],
       ["Print or PDF", "Ctrl+P prints the page on its own, or saves it as a PDF."],
     ],
     keys: [
@@ -117,8 +119,10 @@ const APPS = [
       ["Typing like Excel", "Select a cell and type. 10% becomes a percentage, 20.10.2026 a date; F4 switches $."],
       ["Fill handle", "Drag to copy formulas and continue series: numbers, weeks, months, weekdays, dates."],
       ["Data tools", "AutoSum, sort, filter with search, remove duplicates, text to columns, freeze panes, find and replace."],
+      ["Tables and summaries", "Format as table gives a coloured header, striped rows and filters in one click; Summarize makes a PivotTable-style sheet that adds up each group."],
+      ["Pictures", "Paste a screenshot or insert a picture; it's saved in the Excel file."],
       ["Notes and printing", "Notes on cells (Shift+F2), Format cells (Ctrl+1), Paste special, format painter, and printing or saving as PDF (Ctrl+P)."],
-      ["Charts", "Column, bar, line, area, pie and doughnut, saved as real Excel charts."],
+      ["Charts", "Column, bar, line, area, scatter, pie and doughnut, saved as real Excel charts."],
       ["Links and goal seek", "Ctrl+K links a cell; Goal seek finds the number that makes a formula give what you want."],
     ],
     keys: [
