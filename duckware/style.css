@@ -1,264 +1,163 @@
-/* Dark and plain, like the launcher: near-black, thin lines, monospace for
-   headings and labels, each app in its own colour (--c). */
+/* Plain on purpose: one monospace font, one size, square corners, underlined
+   links. Each app keeps its own colour (--c) for its name and links. */
 :root {
-  --bg: #010409;
-  --panel: #0d1117;
-  --border: #21262d;
-  --text: #e6edf3;
-  --muted: #8b949e;
+  --bg: #0b0b0b;
+  --text: #d8d8d8;
+  --muted: #8a8a8a;
+  --line: #333333;
   --accent: #4ade80;
-  --mono: Consolas, "Cascadia Mono", "SFMono-Regular", Menlo, monospace;
   color-scheme: dark;
 }
 
-* {
-  box-sizing: border-box;
-}
-
 body {
-  margin: 0;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 16px;
   background: var(--bg);
   color: var(--text);
-  font: 16px/1.6 "Segoe UI", system-ui, -apple-system, sans-serif;
+  font: 16px/1.5 Consolas, "Courier New", monospace;
 }
 
 a {
   color: var(--c, var(--accent));
 }
 
-main {
-  max-width: 1080px;
-  margin: 0 auto;
-  padding: 0 20px 40px;
-}
-
-.top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-  max-width: 1080px;
-  margin: 0 auto;
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border);
-}
-
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--text);
-  font-family: var(--mono);
-  font-weight: 700;
-  text-decoration: none;
-}
-
-.brand img {
-  width: 32px;
-  height: 32px;
-}
-
-nav {
-  display: flex;
-  gap: 18px;
-  flex-wrap: wrap;
-  font-family: var(--mono);
-  font-size: 14px;
-}
-
-nav a {
-  color: var(--muted);
-  text-decoration: none;
-}
-
-nav a:hover {
-  color: var(--c);
-}
-
-section {
-  margin-top: 48px;
-}
-
-h1 {
-  margin: 0 0 12px;
-  font-size: clamp(28px, 4vw, 42px);
-  line-height: 1.2;
-}
-
-h2 {
-  margin: 0 0 16px;
-  color: var(--muted);
-  font-family: var(--mono);
-  font-size: 15px;
-  font-weight: 400;
-}
-
+h1,
+h2,
 h3 {
-  margin: 0 0 6px;
-  font-family: var(--mono);
+  margin: 1.5em 0 0.5em;
   font-size: 16px;
 }
 
-.prompt {
-  margin: 0 0 8px;
+h1 {
+  color: var(--c, var(--text));
+}
+
+p {
+  margin: 0.5em 0;
+}
+
+hr,
+.top,
+.bottom {
+  border: 0;
+  border-bottom: 1px dashed var(--line);
+}
+
+.top {
+  padding-bottom: 8px;
+}
+
+.bottom {
+  margin-top: 32px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line);
+  border-bottom: 0;
   color: var(--muted);
-  font-family: var(--mono);
+}
+
+.brand {
+  color: var(--text);
+  font-weight: bold;
+  text-decoration: none;
+}
+
+.brand img,
+.card img {
+  width: 20px;
+  height: 20px;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+
+nav a {
+  margin-right: 12px;
 }
 
 .prompt span {
   color: var(--accent);
 }
 
-.lead {
-  max-width: 720px;
-  color: #c9d1d9;
-  font-size: 18px;
-}
-
-.actions {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  flex-wrap: wrap;
-  margin: 20px 0 8px;
-}
-
 .hint,
 .note,
-figcaption {
+.prompt,
+figcaption,
+.card p,
+.feature p {
   color: var(--muted);
-  font-size: 14px;
-}
-
-.note {
-  max-width: 720px;
 }
 
 .btn {
-  display: inline-block;
-  padding: 10px 18px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--panel);
-  color: var(--text);
-  font-family: var(--mono);
-  font-size: 14px;
-  text-decoration: none;
-}
-
-.btn:hover {
-  border-color: var(--c, var(--accent));
-}
-
-.btn.primary {
-  border-color: var(--c, var(--accent));
   color: var(--c, var(--accent));
 }
 
-.btn.primary:hover {
-  background: var(--c, var(--accent));
-  color: var(--bg);
+.btn::before {
+  content: "[ ";
 }
 
-.cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 14px;
+.btn::after {
+  content: " ]";
 }
 
 .card {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 20px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--panel);
+  display: block;
+  margin: 1em 0;
   color: var(--text);
   text-decoration: none;
 }
 
-.card:hover {
-  border-color: var(--c);
-}
-
-.card img {
-  width: 56px;
-  height: 56px;
-  margin-bottom: 8px;
+.card h3 {
+  display: inline;
+  color: var(--c);
+  text-decoration: underline;
 }
 
 .card p {
-  flex: 1;
-  margin: 0;
-  color: var(--muted);
-  font-size: 15px;
+  margin: 0 0 0 26px;
 }
 
 .more {
-  margin-top: 10px;
-  color: var(--c);
-  font-family: var(--mono);
-  font-size: 13px;
-}
-
-.split {
-  display: grid;
-  grid-template-columns: 1fr 1.3fr;
-  gap: 32px;
-  align-items: center;
-}
-
-.shot {
-  width: 100%;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-}
-
-.hero.app {
-  display: grid;
-  grid-template-columns: 120px 1fr;
-  gap: 28px;
-  align-items: start;
-}
-
-.hero.app h1 {
-  color: var(--c);
-  font-family: var(--mono);
+  display: none;
 }
 
 .app-icon {
-  width: 120px;
-  height: 120px;
+  width: 48px;
+  height: 48px;
+  float: left;
+  margin-right: 12px;
 }
 
-.shots {
-  display: grid;
-  gap: 24px;
+.hero.app::after {
+  content: "";
+  display: block;
+  clear: both;
+}
+
+.shot {
+  max-width: 100%;
+  border: 1px solid var(--line);
 }
 
 figure {
-  margin: 0;
-}
-
-.features {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 14px;
+  margin: 1em 0;
 }
 
 .feature {
-  padding: 16px 18px;
-  border: 1px solid var(--border);
-  border-left: 2px solid var(--c);
-  background: var(--panel);
+  margin: 0.75em 0;
+}
+
+.feature h3 {
+  display: inline;
+  margin: 0;
+}
+
+.feature h3::before {
+  content: "* ";
+  color: var(--c);
 }
 
 .feature p {
-  margin: 0;
-  color: var(--muted);
-  font-size: 15px;
+  margin: 0 0 0 16px;
 }
 
 .keys {
@@ -266,39 +165,11 @@ figure {
 }
 
 .keys td {
-  padding: 6px 18px 6px 0;
-  border-bottom: 1px solid var(--border);
+  padding: 2px 16px 2px 0;
   vertical-align: top;
 }
 
 kbd {
+  font: inherit;
   color: var(--text);
-  font-family: var(--mono);
-  font-size: 14px;
-}
-
-.bottom {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-  max-width: 1080px;
-  margin: 0 auto;
-  padding: 24px 20px 40px;
-  border-top: 1px solid var(--border);
-  color: var(--muted);
-  font-family: var(--mono);
-  font-size: 13px;
-}
-
-@media (max-width: 720px) {
-  .split,
-  .hero.app {
-    grid-template-columns: 1fr;
-  }
-
-  .app-icon {
-    width: 80px;
-    height: 80px;
-  }
 }
