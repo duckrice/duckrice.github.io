@@ -29,6 +29,7 @@ const APPS = [
       ["PDF to Word", "Open a PDF and DuckWriter turns it into an editable document."],
       ["Spelling", "Norwegian and English, side by side."],
       ["Auto-save", "Nothing is lost if the computer shuts down: DuckWriter offers to bring the text back."],
+      ["Page borders and watermarks", "A line round every page, or DRAFT across it, saved so Word shows them the same."],
       ["Copy pictures anywhere", "A picture copied from DuckWriter pastes into Word, Paint, chats and back."],
     ],
     keys: [
