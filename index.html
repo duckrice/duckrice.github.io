@@ -20,10 +20,41 @@
   a {
     color: #4ade80;
   }
+  .post {
+    margin-top: 32px;
+    max-width: 640px;
+  }
+  .by {
+    color: #8a8a8a;
+  }
+  .text {
+    white-space: pre-wrap;
+  }
 </style>
 </head>
 <body>
 <p><span>&gt;_</span> andris</p>
 <p>&gt; <a href="duckware/">duckware</a></p>
+<div id="posts"></div>
+<script>
+  // Posts written on /admin, newest first: who, when, and the text (shown as plain text).
+  fetch("posts.json", { cache: "no-store" })
+    .then((r) => r.json())
+    .then((posts) => {
+      for (const post of posts) {
+        const el = document.createElement("div");
+        el.className = "post";
+        const by = document.createElement("div");
+        by.className = "by";
+        by.textContent = `${post.user} · ${new Date(post.date).toLocaleDateString("nb-NO", { day: "numeric", month: "long", year: "numeric" })}`;
+        const text = document.createElement("div");
+        text.className = "text";
+        text.textContent = post.text;
+        el.append(by, text);
+        document.getElementById("posts").append(el);
+      }
+    })
+    .catch(() => {});
+</script>
 </body>
 </html>

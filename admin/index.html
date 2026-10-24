@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>admin</title>
+<link rel="icon" href="../duckware/icons/duckware.png">
+<style>
+  body {
+    margin: 0;
+    padding: 16px;
+    max-width: 640px;
+    background: #0b0b0b;
+    color: #d8d8d8;
+    font: 16px/1.5 Consolas, "Courier New", monospace;
+    color-scheme: dark;
+  }
+  a {
+    color: #4ade80;
+  }
+  input,
+  textarea,
+  button {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    margin: 4px 0 12px;
+    padding: 6px;
+    border: 1px solid #333333;
+    border-radius: 0;
+    background: #111111;
+    color: inherit;
+    font: inherit;
+  }
+  textarea {
+    height: 12em;
+  }
+  button {
+    width: auto;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+<p><a href="../">andris</a> / admin</p>
+<form id="form">
+  <label>username<input id="user" autocomplete="username" required></label>
+  <label>password<input id="token" type="password" autocomplete="current-password" required></label>
+  <label>text<textarea id="text" required></textarea></label>
+  <button>post</button>
+</form>
+<p id="status"></p>
+<script>
+  // Posts live in posts.json in the site's GitHub repository. GitHub checks the password (an
+  // access token that may write to that repository); nothing is checked in this page itself.
+  const API = "https://api.github.com/repos/duckrice/duckrice.github.io/contents/posts.json";
+  const status = document.getElementById("status");
+  const fromBase64 = (b64) => new TextDecoder().decode(Uint8Array.from(atob(b64.replace(/\n/g, "")), (c) => c.charCodeAt(0)));
+  const toBase64 = (text) => btoa(String.fromCharCode(...new TextEncoder().encode(text)));
+
+  document.getElementById("form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const user = document.getElementById("user").value.trim();
+    const token = document.getElementById("token").value.trim();
+    const text = document.getElementById("text").value.trim();
+    const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
+    status.textContent = "posting…";
+    try {
+      const me = await fetch("https://api.github.com/user", { headers });
+      if (!me.ok || (await me.json()).login.toLowerCase() !== user.toLowerCase()) throw new Error("wrong username or password.");
+      const file = await fetch(API, { headers, cache: "no-store" });
+      if (!file.ok) throw new Error("couldn't read the posts.");
+      const { content, sha } = await file.json();
+      const posts = JSON.parse(fromBase64(content));
+      posts.unshift({ user, date: new Date().toISOString(), text });
+      const saved = await fetch(API, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({ message: `Post by ${user}`, content: toBase64(JSON.stringify(posts, null, 2) + "\n"), sha }),
+      });
+      if (!saved.ok) throw new Error(saved.status === 403 || saved.status === 404 ? "this password may not post." : "couldn't save the post.");
+      document.getElementById("text").value = "";
+      status.textContent = "posted. it shows on the front page in a minute or two.";
+    } catch (error) {
+      status.textContent = String(error.message ?? error);
+    }
+  });
+</script>
+</body>
+</html>
