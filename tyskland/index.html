@@ -86,13 +86,17 @@
 
 <script type="module">
   import { parseReceipt, spending } from "./receipts.js";
-  import { firebaseConfig, tripCode } from "./config.js";
+  import { firebaseConfig } from "./config.js";
 
   const $ = (id) => document.getElementById(id);
   const kr = (n) => n.toFixed(2).replace(".", ",") + " €";
   const me = $("me");
   me.value = localStorage.getItem("tyskland.me") ?? "";
   me.addEventListener("change", () => localStorage.setItem("tyskland.me", me.value.trim()));
+
+  // The group's code comes with the shared link and is remembered, so the home-screen icon finds it.
+  if (location.hash.length > 1) localStorage.setItem("tyskland.code", location.hash.slice(1));
+  const tripCode = localStorage.getItem("tyskland.code") ?? "";
 
   // ---- where the receipts are kept: shared (Firebase) or on this phone -------------------------
   let receipts = [];
