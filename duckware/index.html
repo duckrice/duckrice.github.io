@@ -33,12 +33,21 @@
 <p><a href="../">andris</a> / duckware</p>
 <p>free apps for windows.</p>
 <table>
-  <tr><td>launcher</td><td>all of them</td><td><a href="https://github.com/duckrice/duckware/releases/latest/download/Duckware-Setup.exe">download</a></td><td><a href="https://github.com/duckrice/duckware">source</a></td></tr>
-  <tr><td>duckwriter</td><td>documents</td><td><a href="https://github.com/duckrice/duckwriter/releases/latest/download/DuckWriter-Setup.exe">download</a></td><td><a href="https://github.com/duckrice/duckwriter">source</a></td></tr>
-  <tr><td>duckument</td><td>pdf</td><td><a href="https://github.com/duckrice/duckument/releases/latest/download/Duckument-Setup.exe">download</a></td><td><a href="https://github.com/duckrice/duckument">source</a></td></tr>
-  <tr><td>ducknotes</td><td>notes</td><td><a href="https://github.com/duckrice/ducknotes/releases/latest/download/DuckNotes-Setup.exe">download</a></td><td><a href="https://github.com/duckrice/ducknotes">source</a></td></tr>
-  <tr><td>ducksheets</td><td>spreadsheets</td><td><a href="https://github.com/duckrice/ducksheets/releases/latest/download/DuckSheets-Setup.exe">download</a></td><td><a href="https://github.com/duckrice/ducksheets">source</a></td></tr>
+  <tr><td>launcher</td><td>all of them</td><td class="v" data-repo="duckware"></td><td><a href="https://github.com/duckrice/duckware/releases/latest/download/Duckware-Setup.exe">download</a></td><td><a href="https://github.com/duckrice/duckware">source</a></td></tr>
+  <tr><td>duckwriter</td><td>documents</td><td class="v" data-repo="duckwriter"></td><td><a href="https://github.com/duckrice/duckwriter/releases/latest/download/DuckWriter-Setup.exe">download</a></td><td><a href="https://github.com/duckrice/duckwriter">source</a></td></tr>
+  <tr><td>duckument</td><td>pdf</td><td class="v" data-repo="duckument"></td><td><a href="https://github.com/duckrice/duckument/releases/latest/download/Duckument-Setup.exe">download</a></td><td><a href="https://github.com/duckrice/duckument">source</a></td></tr>
+  <tr><td>ducknotes</td><td>notes</td><td class="v" data-repo="ducknotes"></td><td><a href="https://github.com/duckrice/ducknotes/releases/latest/download/DuckNotes-Setup.exe">download</a></td><td><a href="https://github.com/duckrice/ducknotes">source</a></td></tr>
+  <tr><td>ducksheets</td><td>spreadsheets</td><td class="v" data-repo="ducksheets"></td><td><a href="https://github.com/duckrice/ducksheets/releases/latest/download/DuckSheets-Setup.exe">download</a></td><td><a href="https://github.com/duckrice/ducksheets">source</a></td></tr>
 </table>
+<script>
+  // Each app's latest version and its date, from GitHub.
+  for (const cell of document.querySelectorAll("td.v")) {
+    fetch(`https://api.github.com/repos/duckrice/${cell.dataset.repo}/releases/latest`)
+      .then((r) => r.json())
+      .then((r) => (cell.textContent = r.tag_name ? `${r.tag_name} · ${new Date(r.published_at).toLocaleDateString("nb-NO")}` : ""))
+      .catch(() => {});
+  }
+</script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js");</script>
 </body>
 </html>

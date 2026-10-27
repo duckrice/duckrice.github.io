@@ -40,10 +40,20 @@
     color: inherit;
     font: inherit;
   }
+  .post {
+    margin-top: 24px;
+  }
+  .by {
+    color: #8a8a8a;
+  }
+  .text {
+    white-space: pre-wrap;
+  }
   textarea {
     height: 12em;
   }
   button {
+    display: inline-block;
     width: auto;
     cursor: pointer;
   }
@@ -55,44 +65,104 @@
   <label>username<input id="user" autocomplete="username" required></label>
   <label>password<input id="token" type="password" autocomplete="current-password" required></label>
   <label>text<textarea id="text" required></textarea></label>
-  <button>post</button>
+  <button id="post">post</button> <button id="cancel" type="button" hidden>cancel editing</button>
 </form>
 <p id="status"></p>
+<div id="posts"></div>
 <script>
-  // Posts live in posts.json in the site's GitHub repository. GitHub checks the password (an
-  // access token that may write to that repository); nothing is checked in this page itself.
-  const API = "https://api.github.com/repos/duckrice/duckrice.github.io/contents/posts.json";
-  const status = document.getElementById("status");
+  // Posts live in posts.json in the site's GitHub repository, and feed.xml is made from them for
+  // RSS readers. GitHub checks the password (an access token that may write to that repository);
+  // nothing is checked in this page itself.
+  const REPO = "https://api.github.com/repos/duckrice/duckrice.github.io/contents/";
+  const $ = (id) => document.getElementById(id);
   const fromBase64 = (b64) => new TextDecoder().decode(Uint8Array.from(atob(b64.replace(/\n/g, "")), (c) => c.charCodeAt(0)));
   const toBase64 = (text) => btoa(String.fromCharCode(...new TextEncoder().encode(text)));
+  const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  let editing = null;
 
-  document.getElementById("form").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const user = document.getElementById("user").value.trim();
-    const token = document.getElementById("token").value.trim();
-    const text = document.getElementById("text").value.trim();
-    const headers = { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" };
-    status.textContent = "posting…";
+  function feed(posts) {
+    const items = posts.map((p) => `<item><title>${esc(p.text.split("\n")[0].slice(0, 80))}</title><description>${esc(p.text)}</description><author>${esc(p.user)}</author><pubDate>${new Date(p.date).toUTCString()}</pubDate><guid isPermaLink="false">${esc(p.date)}</guid><link>https://${location.host}/</link></item>`);
+    return `<?xml version="1.0" encoding="UTF-8"?>\n<rss version="2.0"><channel><title>andris</title><link>https://${location.host}/</link><description>andris</description>${items.join("")}</channel></rss>\n`;
+  }
+
+  /** Reads the posts, lets `change` edit them, and saves posts.json and feed.xml. */
+  async function update(change, message) {
+    const user = $("user").value.trim();
+    const headers = { Authorization: `Bearer ${$("token").value.trim()}`, Accept: "application/vnd.github+json" };
+    const me = await fetch("https://api.github.com/user", { headers });
+    if (!me.ok || (await me.json()).login.toLowerCase() !== user.toLowerCase()) throw new Error("wrong username or password.");
+    const file = await (await fetch(REPO + "posts.json", { headers, cache: "no-store" })).json();
+    const posts = change(JSON.parse(fromBase64(file.content)), user);
+    const put = async (path, text, sha) => {
+      const saved = await fetch(REPO + path, { method: "PUT", headers, body: JSON.stringify({ message, content: toBase64(text), ...(sha ? { sha } : {}) }) });
+      if (!saved.ok) throw new Error(saved.status === 403 || saved.status === 404 ? "this password may not post." : "couldn't save.");
+    };
+    await put("posts.json", JSON.stringify(posts, null, 2) + "\n", file.sha);
+    const old = await fetch(REPO + "feed.xml", { headers, cache: "no-store" });
+    await put("feed.xml", feed(posts), old.ok ? (await old.json()).sha : null);
+    show(posts);
+  }
+
+  function show(posts) {
+    $("posts").replaceChildren(
+      ...posts.map((p, i) => {
+        const el = document.createElement("div");
+        el.className = "post";
+        const by = document.createElement("div");
+        by.className = "by";
+        by.textContent = `${p.user} · ${new Date(p.date).toLocaleDateString("nb-NO")} `;
+        const edit = Object.assign(document.createElement("a"), { href: "#", textContent: "edit" });
+        edit.addEventListener("click", (e) => {
+          e.preventDefault();
+          editing = p.date;
+          $("text").value = p.text;
+          $("post").textContent = "save";
+          $("cancel").hidden = false;
+          $("text").focus();
+        });
+        const del = Object.assign(document.createElement("a"), { href: "#", textContent: "delete" });
+        del.addEventListener("click", (e) => {
+          e.preventDefault();
+          if (!confirm("delete this post?")) return;
+          run(() => update((all) => all.filter((x) => x.date !== p.date), "Delete a post"), "deleted.");
+        });
+        by.append(edit, " ", del);
+        const text = document.createElement("div");
+        text.className = "text";
+        text.textContent = p.text;
+        el.append(by, text);
+        return el;
+      }),
+    );
+  }
+
+  async function run(job, done) {
+    $("status").textContent = "saving…";
     try {
-      const me = await fetch("https://api.github.com/user", { headers });
-      if (!me.ok || (await me.json()).login.toLowerCase() !== user.toLowerCase()) throw new Error("wrong username or password.");
-      const file = await fetch(API, { headers, cache: "no-store" });
-      if (!file.ok) throw new Error("couldn't read the posts.");
-      const { content, sha } = await file.json();
-      const posts = JSON.parse(fromBase64(content));
-      posts.unshift({ user, date: new Date().toISOString(), text });
-      const saved = await fetch(API, {
-        method: "PUT",
-        headers,
-        body: JSON.stringify({ message: `Post by ${user}`, content: toBase64(JSON.stringify(posts, null, 2) + "\n"), sha }),
-      });
-      if (!saved.ok) throw new Error(saved.status === 403 || saved.status === 404 ? "this password may not post." : "couldn't save the post.");
-      document.getElementById("text").value = "";
-      status.textContent = "posted. it shows on the front page in a minute or two.";
+      await job();
+      $("status").textContent = `${done} the site shows it in a minute or two.`;
     } catch (error) {
-      status.textContent = String(error.message ?? error);
+      $("status").textContent = String(error.message ?? error);
     }
+  }
+
+  const stopEditing = () => {
+    editing = null;
+    $("text").value = "";
+    $("post").textContent = "post";
+    $("cancel").hidden = true;
+  };
+  $("cancel").addEventListener("click", stopEditing);
+  $("form").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const text = $("text").value.trim();
+    const was = editing;
+    run(async () => {
+      await update((all, user) => (was ? all.map((x) => (x.date === was ? { ...x, text } : x)) : [{ user, date: new Date().toISOString(), text }, ...all]), was ? "Edit a post" : `Post by ${$("user").value.trim()}`);
+      stopEditing();
+    }, was ? "saved." : "posted.");
   });
+  fetch("../posts.json", { cache: "no-store" }).then((r) => r.json()).then(show).catch(() => {});
 </script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js");</script>
 </body>
