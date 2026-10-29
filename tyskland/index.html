@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="no">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#0b0b0b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="tyskland">
+<link rel="apple-touch-icon" href="/icons/icon-180.png">
+<title>tyskland</title>
+<style>
+  body {
+    margin: 0;
+    padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+    max-width: 720px;
+    background: #0b0b0b;
+    color: #d8d8d8;
+    font: 16px/1.5 Consolas, "Courier New", monospace;
+    color-scheme: dark;
+  }
+  a,
+  .ok {
+    color: #4ade80;
+  }
+  .drink {
+    color: #f59e0b;
+    text-decoration: line-through;
+  }
+  .muted {
+    color: #8a8a8a;
+  }
+  input,
+  button,
+  label.button {
+    display: inline-block;
+    margin: 4px 8px 4px 0;
+    padding: 8px 12px;
+    border: 1px solid #333333;
+    border-radius: 0;
+    background: #111111;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+  }
+  table {
+    border-collapse: collapse;
+  }
+  td {
+    padding: 2px 16px 2px 0;
+    vertical-align: top;
+  }
+  td.num {
+    text-align: right;
+  }
+  .receipt {
+    margin: 16px 0;
+    padding-top: 8px;
+    border-top: 1px dashed #333333;
+  }
+  .line {
+    cursor: pointer;
+  }
+  .hidden {
+    display: none;
+  }
+  /* A file input hidden this way still opens on iPhone when its label is tapped. */
+  label.button {
+    position: relative;
+    overflow: hidden;
+  }
+  label.button input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    width: 100%;
+    font-size: 16px;
+  }
+  td:first-child {
+    overflow-wrap: anywhere;
+  }
+</style>
+</head>
+<body>
+<p>tyskland</p>
+
+<p>
+  <label>navn <input id="me" autocomplete="name" placeholder="hvem er du?"></label>
+</p>
+<p>
+  <label class="button">+ kvittering (pdf/bilde)<input id="files" type="file" accept="application/pdf,image/*" multiple></label>
+  <label class="button">+ ta bilde<input id="camera" type="file" accept="image/*" capture="environment"></label>
+</p>
+<p id="status" class="muted"></p>
+
+<table id="summary"></table>
+<p id="where" class="muted"></p>
+<div id="list"></div>
+
+<script type="module">
+  import { parseReceipt, spending } from "./receipts.js";
+  import { firebaseConfig } from "./config.js";
+
+  const $ = (id) => document.getElementById(id);
+  const kr = (n) => n.toFixed(2).replace(".", ",") + " €";
+  const me = $("me");
+  me.value = localStorage.getItem("tyskland.me") ?? "";
+  me.addEventListener("change", () => localStorage.setItem("tyskland.me", me.value.trim()));
+
+  // The group's code comes with the shared link and is remembered, so the home-screen icon finds it.
+  if (location.hash.length > 1) localStorage.setItem("tyskland.code", location.hash.slice(1));
+  const tripCode = localStorage.getItem("tyskland.code") ?? "";
+
+  // ---- where the receipts are kept: shared (Firebase) or on this phone -------------------------
+  let receipts = [];
+  let store;
+  if (firebaseConfig && tripCode) {
+    const { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
+    const fs = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+    const db = fs.getFirestore(initializeApp(firebaseConfig));
+    const col = fs.collection(db, "trips", tripCode, "receipts");
+    fs.onSnapshot(col, (snap) => {
+      receipts = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      render();
+    }, (e) => ($("status").textContent = `kunne ikke hente kvitteringene: ${e.message}`));
+    store = {
+      add: (r) => fs.addDoc(col, r),
+      update: (r) => fs.setDoc(fs.doc(col, r.id), (({ id, ...rest }) => rest)(r)),
+      remove: (r) => fs.deleteDoc(fs.doc(col, r.id)),
+    };
+    $("where").textContent = "delt med gruppa.";
+  } else {
+    const save = () => (localStorage.setItem("tyskland.receipts", JSON.stringify(receipts)), render());
+    receipts = JSON.parse(localStorage.getItem("tyskland.receipts") ?? "[]");
+    store = {
+      add: async (r) => (receipts.push({ id: crypto.randomUUID?.() ?? String(Date.now() + Math.random()), ...r }), save()),
+      update: async (r) => (receipts = receipts.map((x) => (x.id === r.id ? r : x)), save()),
+      remove: async (r) => (receipts = receipts.filter((x) => x.id !== r.id), save()),
+    };
+    $("where").textContent = "lagret bare på denne telefonen.";
+    render();
+  }
+
+  // ---- reading a receipt: the PDF's own text, or else read from the picture --------------------
+  const script = (src) => new Promise((ok, fail) => document.head.append(Object.assign(document.createElement("script"), { src, onload: ok, onerror: fail })));
+  let pdfReady, ocrReady;
+  const pdfjs = async () => {
+    pdfReady ??= script("https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js").then(() => {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+      return pdfjsLib;
+    });
+    return pdfReady;
+  };
+  // A phone photo (12 MP or more) is made smaller first: reading it whole can run Safari out of memory.
+  const smaller = async (file) => {
+    const url = URL.createObjectURL(file);
+    try {
+      const img = await new Promise((ok, fail) => Object.assign(new Image(), { onload() { ok(this); }, onerror: fail, src: url }));
+      const scale = Math.min(1, 2000 / Math.max(img.naturalWidth, img.naturalHeight));
+      const canvas = Object.assign(document.createElement("canvas"), { width: Math.round(img.naturalWidth * scale), height: Math.round(img.naturalHeight * scale) });
+      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+      return canvas;
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  };
+  const ocr = async (image) => {
+    ocrReady ??= script("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js").then(() => Tesseract.createWorker("deu"));
+    const worker = await ocrReady;
+    return (await worker.recognize(image)).data.text;
+  };
+
+  async function readFile(file) {
+    if (!/pdf/i.test(file.type) && !/\.pdf$/i.test(file.name)) return ocr(await smaller(file));
+    const lib = await pdfjs();
+    const pdf = await lib.getDocument({ data: await file.arrayBuffer() }).promise;
+    let text = "";
+    for (let n = 1; n <= pdf.numPages; n++) {
+      const page = await pdf.getPage(n);
+      // Text the PDF has itself, line by line (a scan has none, and is read from its picture).
+      const content = await page.getTextContent();
+      const rows = new Map();
+      for (const item of content.items) {
+        const y = Math.round(item.transform[5]);
+        rows.set(y, [...(rows.get(y) ?? []), item]);
+      }
+      const own = [...rows.entries()].sort((a, b) => b[0] - a[0]).map(([, items]) => items.sort((a, b) => a.transform[4] - b.transform[4]).map((i) => i.str).join(" ")).join("\n");
+      if (own.replace(/\s/g, "").length > 30) {
+        text += own + "\n";
+        continue;
+      }
+      const viewport = page.getViewport({ scale: 2.5 });
+      const canvas = Object.assign(document.createElement("canvas"), { width: viewport.width, height: viewport.height });
+      await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+      text += (await ocr(canvas)) + "\n";
+    }
+    return text;
+  }
+
+  async function addFiles(files) {
+    const person = me.value.trim();
+    if (!person) {
+      $("status").textContent = "skriv navnet ditt først.";
+      me.focus();
+      return;
+    }
+    let n = 0;
+    for (const file of files) {
+      $("status").textContent = `leser ${file.name} (${++n}/${files.length})…`;
+      try {
+        const parsed = parseReceipt(await readFile(file));
+        if (!parsed.items.length) throw new Error("fant ingen varer med pris. prøv et skarpere bilde.");
+        await store.add({ person, ...parsed, file: file.name, added: new Date().toISOString() });
+      } catch (e) {
+        $("status").textContent = `kunne ikke lese ${file.name}: ${e.message ?? e}`;
+        return;
+      }
+    }
+    $("status").textContent = `${files.length} kvittering${files.length === 1 ? "" : "er"} lagt til. sjekk at alkoholen (gul, gjennomstreket) stemmer.`;
+  }
+  for (const input of [$("files"), $("camera")]) input.addEventListener("change", () => (addFiles([...input.files]), (input.value = "")));
+
+  // ---- showing it: who spent what (without alcohol), then each receipt ------------------------
+  function render() {
+    const people = new Map();
+    for (const r of receipts) {
+      const s = spending(r);
+      const p = people.get(r.person) ?? { counted: 0, alcohol: 0, count: 0 };
+      people.set(r.person, { counted: p.counted + s.counted, alcohol: p.alcohol + s.alcohol, count: p.count + 1 });
+    }
+    const rows = [...people.entries()].sort((a, b) => b[1].counted - a[1].counted);
+    $("summary").innerHTML = rows.length ? `<tr class="muted"><td>navn</td><td class="num">uten alkohol</td><td class="num">alkohol</td><td class="num">kvitt.</td></tr>` : "";
+    for (const [name, p] of rows) {
+      const tr = $("summary").insertRow();
+      for (const [value, cls] of [[name, ""], [kr(p.counted), "num ok"], [kr(p.alcohol), "num muted"], [String(p.count), "num muted"]]) Object.assign(tr.insertCell(), { textContent: value, className: cls });
+    }
+
+    const list = $("list");
+    list.replaceChildren();
+    for (const r of [...receipts].sort((a, b) => (b.date ?? b.added).localeCompare(a.date ?? a.added))) {
+      const s = spending(r);
+      const box = document.createElement("div");
+      box.className = "receipt";
+      const head = document.createElement("div");
+      head.textContent = `${r.person} · ${r.date ? r.date.split("-").reverse().join(".") : "uten dato"} · ${r.store}`;
+      const totals = document.createElement("div");
+      totals.innerHTML = `<span class="ok">${kr(s.counted)}</span> <span class="muted">(totalt ${kr(s.total)}, alkohol ${kr(s.alcohol)})</span>`;
+      // A misread number shows as items that don't add up to the total.
+      const sum = r.items.reduce((t, i) => t + i.amount, 0);
+      if (Math.abs(sum - r.total) > 0.05) totals.innerHTML += `<br><span class="drink" style="text-decoration:none">sjekk: varene blir ${kr(sum)}, ikke ${kr(r.total)}. trykk "endre total" eller slett og skann på nytt.</span>`;
+      const table = document.createElement("table");
+      r.items.forEach((item, i) => {
+        const tr = table.insertRow();
+        tr.className = `line${item.alcohol ? " drink" : ""}`;
+        tr.title = "trykk for å endre om dette er alkohol";
+        Object.assign(tr.insertCell(), { textContent: item.name });
+        Object.assign(tr.insertCell(), { textContent: kr(item.amount), className: "num" });
+        tr.addEventListener("click", () => store.update({ ...r, items: r.items.map((x, j) => (j === i ? { ...x, alcohol: !x.alcohol } : x)) }));
+      });
+      const fixTotal = Object.assign(document.createElement("button"), { textContent: "endre total" });
+      fixTotal.addEventListener("click", () => {
+        const answer = prompt("totalen på kvitteringen (f.eks. 23,45)", String(r.total).replace(".", ","));
+        const total = answer && Number(answer.replace(",", "."));
+        if (total || total === 0) store.update({ ...r, total });
+      });
+      const remove = Object.assign(document.createElement("button"), { textContent: "slett" });
+      remove.addEventListener("click", () => confirm("slette denne kvitteringen?") && store.remove(r));
+      box.append(head, totals, table, fixTotal, remove);
+      list.append(box);
+    }
+  }
+</script>
+</body>
+</html>
