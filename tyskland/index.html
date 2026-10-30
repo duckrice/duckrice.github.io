@@ -121,7 +121,7 @@
 </div>
 
 <script type="module">
-  import { parseReceipt, spending } from "./receipts.js";
+  import { notAnItem, parseReceipt, spending } from "./receipts.js";
   import { firebaseConfig } from "./config.js";
   import { readPaper } from "./photo.js";
 
@@ -161,6 +161,16 @@
   // The code stays in the address, so "Add to Home Screen" keeps it.
   if (tripCode && location.hash.slice(1) !== tripCode) history.replaceState(null, "", `#${tripCode}`);
 
+  // A receipt saved with its "Summe" read as an item: that line out. When no total had been found, the
+  // total was all lines added up, "Summe" included: then the "Summe" line's amount is the real total.
+  function withoutSumme(r) {
+    const gone = r.items.filter((i) => notAnItem(i.name));
+    if (!gone.length) return r;
+    const all = r.items.reduce((s, i) => s + i.amount, 0);
+    const total = Math.abs(r.total - all) <= 0.06 ? gone[gone.length - 1].amount : r.total;
+    return { ...r, items: r.items.filter((i) => !notAnItem(i.name)), total };
+  }
+
   // ---- where the receipts are kept: shared (Firebase) or on this phone -------------------------
   let receipts = [];
   let store;
@@ -179,6 +189,8 @@
     const col = fs.collection(db, "trips", tripCode, "receipts");
     fs.onSnapshot(col, (snap) => {
       receipts = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      // Receipts read before "Summe" was always caught: that line taken out, once, for everyone.
+      for (const r of receipts) if (r.items.some((i) => notAnItem(i.name))) store.update(withoutSumme(r));
       render();
     }, (e) => ($("status").textContent = `kunne ikke hente kvitteringene: ${e.message}`));
     store = {
@@ -197,7 +209,7 @@
     $("where").replaceChildren("delt med alle som har lenken. ", share);
   } else {
     const save = () => (localStorage.setItem("tyskland.receipts", JSON.stringify(receipts)), render());
-    receipts = JSON.parse(localStorage.getItem("tyskland.receipts") ?? "[]");
+    receipts = JSON.parse(localStorage.getItem("tyskland.receipts") ?? "[]").map(withoutSumme);
     store = {
       add: async (r) => (receipts.push({ id: crypto.randomUUID?.() ?? String(Date.now() + Math.random()), ...r }), save()),
       update: async (r) => (receipts = receipts.map((x) => (x.id === r.id ? r : x)), save()),

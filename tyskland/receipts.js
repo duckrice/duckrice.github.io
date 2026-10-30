@@ -82,6 +82,19 @@ const AMOUNTS = /\d[.,;]\s?\d{2}(?!\d)/g;
 // A name followed by its count and unit price ("Pfand Mehrweg   2 x 0,08", "Pils 0,5l   0,79 x 6").
 const COUNTED = /\s+(?:\d+\s*[x×]\s*\d{1,4}[.,]\d{2}|\d{1,4}[.,]\d{2}\s*[x×]\s*\d+)\s*$/i;
 
+/** A line that is the total or a subtotal, never an item (for receipts saved before this was caught). */
+export const notAnItem = (name) => isTotal(name) || SUBTOTAL.test(name);
+
+/** Whether a line's name says it is the total: "Summe" however a photo read it ("SUFME", "5UMME", "S U M M E", "Bon-Summe"). */
+function isTotal(name) {
+  if (TOTAL.test(name)) return true;
+  // Letters printed with gaps ("S U M M E") joined; a 5 read for an S.
+  const plain = name.toLowerCase().replace(/5/g, "s").replace(/\b([a-zäöüß]) (?=[a-zäöüß]\b)/g, "$1");
+  return plain
+    .split(/[^a-zäöüß]+/)
+    .some((w) => /summe$/.test(w) || ["sume", "svmme", "sumne", "summ", "umme"].includes(w) || (w.length === 5 && oneOff(w, "summe")));
+}
+
 /** The receipt's lines read into items, total and date. Pfand and discounts right after a drink count with the drink. */
 export function parseReceipt(text) {
   // Characters a photo is often read as: a dotless i, low quotes for commas, long dashes for minus.
@@ -92,10 +105,12 @@ export function parseReceipt(text) {
     .map((l) => l.trim().replace(/^[|\[\]{}()!;'‘’"]+\s*/, "").replace(/\s*[|\[\]{}()!;'‘’"]+$/, ""))
     .filter(Boolean);
   const items = [];
-  let total = null, subtotal = null;
+  let total = null, subtotal = null, totalNext = false;
   // A name whose price comes on the next line (weighed goods, several of a kind).
   let pending = null;
   const add = (name, amount) => {
+    // Never an item, whichever way it got here.
+    if (isTotal(name) || SUBTOTAL.test(name)) return;
     const previous = items[items.length - 1];
     const follows = previous?.alcohol && ((DEPOSIT.test(name) && amount > 0) || (DISCOUNT.test(name) && amount < 0));
     items.push({ name, amount, alcohol: DEPOSIT.test(name) || DISCOUNT.test(name) ? Boolean(follows) : isAlcohol(name) });
@@ -111,24 +126,31 @@ export function parseReceipt(text) {
     if (!m) {
       // A name alone, or a name with its count: the price follows.
       const name = line.replace(COUNTED, "").trim();
-      pending = /[a-zäöü]{3}/i.test(name) && !breakdown(name) && !TAX.test(name) ? name : null;
+      totalNext = isTotal(name) && !SUBTOTAL.test(name);
+      pending = /[a-zäöü]{3}/i.test(name) && !breakdown(name) && !TAX.test(name) && !isTotal(name) ? name : null;
       continue;
     }
     // Dot leaders ("Milch ..... 0,99") go; an abbreviation's dot ("halbtr.") stays; a euro sign goes.
     let name = m[1].replace(/(\s|\.{2,}|[:*€£$])+$/, "").trim();
     let amount = money(m[2]);
     // After the total, the same amount again is how it was paid, however that line was read.
-    if (total !== null && amount === total && !TOTAL.test(name) && items.length) break;
+    if (total !== null && amount === total && !isTotal(name) && items.length) break;
     // A discount takes money off, even when its minus wasn't printed or read.
     if ((m[3] || DISCOUNT.test(m[1])) && amount > 0) amount = -amount;
-    if (TOTAL.test(name)) {
-      // Some tills print a running "Summe" between items: the last one is the total. The payment ends it.
-      total = amount;
+    if (SUBTOTAL.test(name) || TAX.test(name)) {
+      if (SUBTOTAL.test(name)) subtotal = amount;
       pending = null;
       continue;
     }
-    if (SUBTOTAL.test(name) || TAX.test(name)) {
-      if (SUBTOTAL.test(name)) subtotal = amount;
+    // "SUMME" whose amount is on the next line: that amount is the total.
+    if (!name && totalNext) {
+      total = amount;
+      totalNext = false;
+      continue;
+    }
+    if (isTotal(name)) {
+      // Some tills print a running "Summe" between items: the last one is the total. The payment ends it.
+      total = amount;
       pending = null;
       continue;
     }
@@ -145,6 +167,7 @@ export function parseReceipt(text) {
       continue;
     }
     pending = null;
+    totalNext = false;
     if (!/[a-zäöü]{2}/i.test(name)) continue;
     add(name, amount);
   }
