@@ -81,23 +81,42 @@
   td:first-child {
     overflow-wrap: anywhere;
   }
+  button.on {
+    border-color: #4ade80;
+    color: #4ade80;
+  }
+  tr.sum td {
+    padding-top: 8px;
+    border-top: 1px solid #333333;
+  }
+  #summary td {
+    padding-right: 10px;
+    white-space: nowrap;
+    overflow-wrap: normal;
+    font-size: 14px;
+  }
 </style>
 </head>
 <body>
 <p>tyskland</p>
 
-<p>
-  <label>navn <input id="me" autocomplete="name" placeholder="hvem er du?"></label>
-</p>
-<p>
-  <label class="button">+ kvittering (pdf/bilde)<input id="files" type="file" accept="application/pdf,image/*" multiple></label>
-  <label class="button">+ ta bilde<input id="camera" type="file" accept="image/*" capture="environment"></label>
-</p>
-<p id="status" class="muted"></p>
+<p><button id="showReceipts" class="on">kvitteringer</button><button id="showOverview">oversikt</button></p>
 
-<table id="summary"></table>
-<p id="where" class="muted"></p>
-<div id="list"></div>
+<div id="receiptsView">
+  <p id="who">hvem er du?<br></p>
+  <p>
+    <label class="button">+ kvittering (pdf/bilde)<input id="files" type="file" accept="application/pdf,image/*" multiple></label>
+    <label class="button">+ ta bilde<input id="camera" type="file" accept="image/*" capture="environment"></label>
+  </p>
+  <p id="status" class="muted"></p>
+  <p id="where" class="muted"></p>
+  <div id="list"></div>
+</div>
+
+<div id="overviewView" class="hidden">
+  <p class="muted">uten alkohol er det som teller. alkohol er tatt ut (pant for drikke med).</p>
+  <table id="summary"></table>
+</div>
 
 <script type="module">
   import { parseReceipt, spending } from "./receipts.js";
@@ -105,9 +124,27 @@
 
   const $ = (id) => document.getElementById(id);
   const kr = (n) => n.toFixed(2).replace(".", ",") + " €";
-  const me = $("me");
-  me.value = localStorage.getItem("tyskland.me") ?? "";
-  me.addEventListener("change", () => localStorage.setItem("tyskland.me", me.value.trim()));
+  // The four on the trip; each phone remembers who it belongs to.
+  const PEOPLE = ["AA", "AR", "RJ", "FR"];
+  let me = PEOPLE.includes(localStorage.getItem("tyskland.me")) ? localStorage.getItem("tyskland.me") : "";
+  const whoButtons = PEOPLE.map((name) => {
+    const b = Object.assign(document.createElement("button"), { textContent: name });
+    b.addEventListener("click", () => {
+      me = name;
+      localStorage.setItem("tyskland.me", name);
+      for (const x of whoButtons) x.classList.toggle("on", x === b);
+      $("status").textContent = "";
+    });
+    b.classList.toggle("on", name === me);
+    return b;
+  });
+  $("who").append(...whoButtons);
+
+  for (const [button, view] of [["showReceipts", "receiptsView"], ["showOverview", "overviewView"]])
+    $(button).addEventListener("click", () => {
+      for (const id of ["receiptsView", "overviewView"]) $(id).classList.toggle("hidden", id !== view);
+      for (const id of ["showReceipts", "showOverview"]) $(id).classList.toggle("on", id === button);
+    });
 
   // The group's code comes with the shared link and is remembered, so the home-screen icon finds it.
   if (location.hash.length > 1) localStorage.setItem("tyskland.code", location.hash.slice(1));
@@ -223,10 +260,9 @@
   }
 
   async function addFiles(files) {
-    const person = me.value.trim();
+    const person = me;
     if (!person) {
-      $("status").textContent = "skriv navnet ditt først.";
-      me.focus();
+      $("status").textContent = "velg hvem du er først (AA, AR, RJ eller FR).";
       return;
     }
     let n = 0;
@@ -247,17 +283,21 @@
 
   // ---- showing it: who spent what (without alcohol), then each receipt ------------------------
   function render() {
-    const people = new Map();
+    // The overview: each of the four (and anyone from older receipts), then everyone together.
+    const zero = () => ({ counted: 0, alcohol: 0, total: 0, count: 0 });
+    const people = new Map(PEOPLE.map((name) => [name, zero()]));
+    const all = zero();
     for (const r of receipts) {
       const s = spending(r);
-      const p = people.get(r.person) ?? { counted: 0, alcohol: 0, count: 0 };
-      people.set(r.person, { counted: p.counted + s.counted, alcohol: p.alcohol + s.alcohol, count: p.count + 1 });
+      const p = people.get(r.person) ?? zero();
+      for (const t of [p, all]) Object.assign(t, { counted: t.counted + s.counted, alcohol: t.alcohol + s.alcohol, total: t.total + s.total, count: t.count + 1 });
+      people.set(r.person, p);
     }
-    const rows = [...people.entries()].sort((a, b) => b[1].counted - a[1].counted);
-    $("summary").innerHTML = rows.length ? `<tr class="muted"><td>navn</td><td class="num">uten alkohol</td><td class="num">alkohol</td><td class="num">kvitt.</td></tr>` : "";
-    for (const [name, p] of rows) {
+    $("summary").innerHTML = `<tr class="muted"><td>navn</td><td class="num">uten<br>alkohol</td><td class="num">alkohol</td><td class="num">totalt</td><td class="num">kvitt.</td></tr>`;
+    for (const [name, p] of [...people, ["alle", all]]) {
       const tr = $("summary").insertRow();
-      for (const [value, cls] of [[name, ""], [kr(p.counted), "num ok"], [kr(p.alcohol), "num muted"], [String(p.count), "num muted"]]) Object.assign(tr.insertCell(), { textContent: value, className: cls });
+      if (name === "alle") tr.className = "sum";
+      for (const [value, cls] of [[name, ""], [kr(p.counted), "num ok"], [kr(p.alcohol), "num muted"], [kr(p.total), "num"], [String(p.count), "num muted"]]) Object.assign(tr.insertCell(), { textContent: value, className: cls });
     }
 
     const list = $("list");
