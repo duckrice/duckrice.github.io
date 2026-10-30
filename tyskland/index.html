@@ -110,6 +110,7 @@
   </p>
   <p id="status" class="muted"></p>
   <p id="where" class="muted"></p>
+  <p id="filter" class="muted"></p>
   <div id="list"></div>
 </div>
 
@@ -126,6 +127,7 @@
   const kr = (n) => n.toFixed(2).replace(".", ",") + " €";
   // The four on the trip; each phone remembers who it belongs to.
   const PEOPLE = ["AA", "AR", "RJ", "FR"];
+  let showOnly = "";
   let me = PEOPLE.includes(localStorage.getItem("tyskland.me")) ? localStorage.getItem("tyskland.me") : "";
   const whoButtons = PEOPLE.map((name) => {
     const b = Object.assign(document.createElement("button"), { textContent: name });
@@ -296,13 +298,32 @@
     $("summary").innerHTML = `<tr class="muted"><td>navn</td><td class="num">uten<br>alkohol</td><td class="num">alkohol</td><td class="num">totalt</td><td class="num">kvitt.</td></tr>`;
     for (const [name, p] of [...people, ["alle", all]]) {
       const tr = $("summary").insertRow();
-      if (name === "alle") tr.className = "sum";
+      tr.className = name === "alle" ? "sum line" : "line";
+      tr.title = "trykk for å se kvitteringene";
       for (const [value, cls] of [[name, ""], [kr(p.counted), "num ok"], [kr(p.alcohol), "num muted"], [kr(p.total), "num"], [String(p.count), "num muted"]]) Object.assign(tr.insertCell(), { textContent: value, className: cls });
+      // A tap on a person shows their receipts.
+      tr.addEventListener("click", () => {
+        showOnly = name === "alle" ? "" : name;
+        $("showReceipts").click();
+        render();
+      });
     }
 
+    // Whose receipts to show: everyone's, or one person's.
+    $("filter").replaceChildren(
+      "vis: ",
+      ...["alle", ...people.keys()].map((name) => {
+        const b = Object.assign(document.createElement("button"), { textContent: name });
+        b.classList.toggle("on", (showOnly || "alle") === name);
+        b.addEventListener("click", () => ((showOnly = name === "alle" ? "" : name), render()));
+        return b;
+      }),
+    );
     const list = $("list");
     list.replaceChildren();
-    for (const r of [...receipts].sort((a, b) => (b.date ?? b.added).localeCompare(a.date ?? a.added))) {
+    const shown = receipts.filter((r) => !showOnly || r.person === showOnly);
+    if (showOnly && !shown.length) list.textContent = `${showOnly} har ingen kvitteringer ennå.`;
+    for (const r of shown.sort((a, b) => (b.date ?? b.added).localeCompare(a.date ?? a.added))) {
       const s = spending(r);
       const box = document.createElement("div");
       box.className = "receipt";
