@@ -111,7 +111,14 @@
 
   // The group's code comes with the shared link and is remembered, so the home-screen icon finds it.
   if (location.hash.length > 1) localStorage.setItem("tyskland.code", location.hash.slice(1));
+  // Without a link, this phone starts a trip: a random code nobody can guess (the rules want 16+ characters).
+  if (firebaseConfig && !localStorage.getItem("tyskland.code")) {
+    const abc = "abcdefghijkmnpqrstuvwxyz23456789";
+    localStorage.setItem("tyskland.code", [...crypto.getRandomValues(new Uint8Array(20))].map((b) => abc[b % abc.length]).join(""));
+  }
   const tripCode = localStorage.getItem("tyskland.code") ?? "";
+  // The code stays in the address, so "Add to Home Screen" keeps it.
+  if (tripCode && location.hash.slice(1) !== tripCode) history.replaceState(null, "", `#${tripCode}`);
 
   // ---- where the receipts are kept: shared (Firebase) or on this phone -------------------------
   let receipts = [];
@@ -119,7 +126,15 @@
   if (firebaseConfig && tripCode) {
     const { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
     const fs = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
-    const db = fs.getFirestore(initializeApp(firebaseConfig));
+    const { getAuth, signInAnonymously } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js");
+    const app = initializeApp(firebaseConfig);
+    // The database only answers phones signed in (no password: the page does it by itself).
+    try {
+      await signInAnonymously(getAuth(app));
+    } catch (e) {
+      $("status").textContent = `kunne ikke koble til: ${e.message}`;
+    }
+    const db = fs.getFirestore(app);
     const col = fs.collection(db, "trips", tripCode, "receipts");
     fs.onSnapshot(col, (snap) => {
       receipts = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -130,7 +145,15 @@
       update: (r) => fs.setDoc(fs.doc(col, r.id), (({ id, ...rest }) => rest)(r)),
       remove: (r) => fs.deleteDoc(fs.doc(col, r.id)),
     };
-    $("where").textContent = "delt med gruppa.";
+    // The link to send the group: whoever opens it sees and adds to the same receipts.
+    const link = `${location.origin}${location.pathname}#${tripCode}`;
+    const share = Object.assign(document.createElement("button"), { textContent: "del lenken med gruppa" });
+    share.addEventListener("click", async () => {
+      if (navigator.share) return navigator.share({ title: "tyskland", url: link }).catch(() => {});
+      await navigator.clipboard.writeText(link);
+      $("status").textContent = "lenken er kopiert. send den bare til gruppa.";
+    });
+    $("where").replaceChildren("delt med alle som har lenken. ", share);
   } else {
     const save = () => (localStorage.setItem("tyskland.receipts", JSON.stringify(receipts)), render());
     receipts = JSON.parse(localStorage.getItem("tyskland.receipts") ?? "[]");
