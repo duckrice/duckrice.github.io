@@ -107,6 +107,7 @@
   <p>
     <label class="button">+ kvittering (pdf/bilde)<input id="files" type="file" accept="application/pdf,image/*" multiple></label>
     <label class="button">+ ta bilde<input id="camera" type="file" accept="image/*" capture="environment"></label>
+    <button id="typed">+ skriv inn total</button>
   </p>
   <p id="status" class="muted"></p>
   <p id="where" class="muted"></p>
@@ -122,6 +123,7 @@
 <script type="module">
   import { parseReceipt, spending } from "./receipts.js";
   import { firebaseConfig } from "./config.js";
+  import { paperOf } from "./photo.js";
 
   const $ = (id) => document.getElementById(id);
   const kr = (n) => n.toFixed(2).replace(".", ",") + " €";
@@ -220,7 +222,8 @@
     const url = URL.createObjectURL(file);
     try {
       const img = await new Promise((ok, fail) => Object.assign(new Image(), { onload() { ok(this); }, onerror: fail, src: url }));
-      const scale = Math.min(1, 2000 / Math.max(img.naturalWidth, img.naturalHeight));
+      // A long receipt needs its small print kept: up to 3000 px tall is still safe on a phone.
+      const scale = Math.min(1, 3000 / Math.max(img.naturalWidth, img.naturalHeight));
       const canvas = Object.assign(document.createElement("canvas"), { width: Math.round(img.naturalWidth * scale), height: Math.round(img.naturalHeight * scale) });
       canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
       return canvas;
@@ -229,9 +232,13 @@
     }
   };
   const ocr = async (image) => {
-    ocrReady ??= script("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js").then(() => Tesseract.createWorker("deu"));
+    ocrReady ??= script("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js").then(() => Tesseract.createWorker("deu").then(async (worker) => {
+      // One block of lines, spaces kept: a receipt's name and its price stay on one line.
+      await worker.setParameters({ tessedit_pageseg_mode: "6", preserve_interword_spaces: "1" });
+      return worker;
+    }));
     const worker = await ocrReady;
-    return (await worker.recognize(image)).data.text;
+    return (await worker.recognize(paperOf(image))).data.text;
   };
 
   async function readFile(file) {
@@ -275,12 +282,35 @@
         if (!parsed.items.length) throw new Error("fant ingen varer med pris. prøv et skarpere bilde.");
         await store.add({ person, ...parsed, file: file.name, added: new Date().toISOString() });
       } catch (e) {
-        $("status").textContent = `kunne ikke lese ${file.name}: ${e.message ?? e}`;
+        $("status").textContent = `kunne ikke lese ${file.name}: ${e.message ?? e} du kan også trykke "+ skriv inn total".`;
         return;
       }
     }
     $("status").textContent = `${files.length} kvittering${files.length === 1 ? "" : "er"} lagt til. sjekk at alkoholen (gul, gjennomstreket) stemmer.`;
   }
+  // A receipt that can't be read (or was lost): its total typed in, and how much of it was alcohol.
+  const number = (answer) => (answer === null ? null : Number(answer.trim().replace(/s/g, "").replace(",", ".")));
+  $("typed").addEventListener("click", async () => {
+    if (!me) {
+      $("status").textContent = "velg hvem du er først (AA, AR, RJ eller FR).";
+      return;
+    }
+    const total = number(prompt("totalen på kvitteringen (f.eks. 23,45)"));
+    if (total === null || !Number.isFinite(total)) return;
+    const alcohol = number(prompt("hvor mye av det var alkohol? (0 hvis ingenting)", "0"));
+    if (alcohol === null || !Number.isFinite(alcohol)) return;
+    const shop = prompt("butikk (kan stå tom)", "") ?? "";
+    await store.add({
+      person: me,
+      store: shop.trim() || "skrevet inn",
+      date: new Date().toISOString().slice(0, 10),
+      items: alcohol ? [{ name: "alkohol (skrevet inn)", amount: alcohol, alcohol: true }] : [],
+      total,
+      typed: true,
+      added: new Date().toISOString(),
+    });
+    $("status").textContent = "kvitteringen er lagt til.";
+  });
   for (const input of [$("files"), $("camera")]) input.addEventListener("change", () => (addFiles([...input.files]), (input.value = "")));
 
   // ---- showing it: who spent what (without alcohol), then each receipt ------------------------
@@ -333,7 +363,7 @@
       totals.innerHTML = `<span class="ok">${kr(s.counted)}</span> <span class="muted">(totalt ${kr(s.total)}, alkohol ${kr(s.alcohol)})</span>`;
       // A misread number shows as items that don't add up to the total.
       const sum = r.items.reduce((t, i) => t + i.amount, 0);
-      if (Math.abs(sum - r.total) > 0.05) totals.innerHTML += `<br><span class="drink" style="text-decoration:none">sjekk: varene blir ${kr(sum)}, ikke ${kr(r.total)}. trykk "endre total" eller slett og skann på nytt.</span>`;
+      if (r.items.length && !r.typed && Math.abs(sum - r.total) > 0.05) totals.innerHTML += `<br><span class="drink" style="text-decoration:none">sjekk: varene blir ${kr(sum)}, ikke ${kr(r.total)}. trykk "endre total" eller slett og skann på nytt.</span>`;
       const table = document.createElement("table");
       r.items.forEach((item, i) => {
         const tr = table.insertRow();
