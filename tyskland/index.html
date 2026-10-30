@@ -123,7 +123,7 @@
 <script type="module">
   import { parseReceipt, spending } from "./receipts.js";
   import { firebaseConfig } from "./config.js";
-  import { paperOf } from "./photo.js";
+  import { readPaper } from "./photo.js";
 
   const $ = (id) => document.getElementById(id);
   const kr = (n) => n.toFixed(2).replace(".", ",") + " €";
@@ -222,8 +222,8 @@
     const url = URL.createObjectURL(file);
     try {
       const img = await new Promise((ok, fail) => Object.assign(new Image(), { onload() { ok(this); }, onerror: fail, src: url }));
-      // A long receipt needs its small print kept: up to 3000 px tall is still safe on a phone.
-      const scale = Math.min(1, 3000 / Math.max(img.naturalWidth, img.naturalHeight));
+      // At most 4000 px (12 MP): a bigger picture is more than a phone may draw at once.
+      const scale = Math.min(1, 4000 / Math.max(img.naturalWidth, img.naturalHeight));
       const canvas = Object.assign(document.createElement("canvas"), { width: Math.round(img.naturalWidth * scale), height: Math.round(img.naturalHeight * scale) });
       canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
       return canvas;
@@ -238,7 +238,7 @@
       return worker;
     }));
     const worker = await ocrReady;
-    return (await worker.recognize(paperOf(image))).data.text;
+    return readPaper(image, async (piece) => (await worker.recognize(piece)).data);
   };
 
   async function readFile(file) {
@@ -279,7 +279,8 @@
       $("status").textContent = `leser ${file.name} (${++n}/${files.length})…`;
       try {
         const parsed = parseReceipt(await readFile(file));
-        if (!parsed.items.length) throw new Error("fant ingen varer med pris. prøv et skarpere bilde.");
+        // A card slip has only its total: kept, and its alcohol can be set with "alkohol".
+        if (!parsed.items.length && !(parsed.total > 0)) throw new Error("fant ingen varer med pris. prøv et skarpere bilde.");
         await store.add({ person, ...parsed, file: file.name, added: new Date().toISOString() });
       } catch (e) {
         $("status").textContent = `kunne ikke lese ${file.name}: ${e.message ?? e} du kan også trykke "+ skriv inn total".`;
@@ -304,7 +305,7 @@
       person: me,
       store: shop.trim() || "skrevet inn",
       date: new Date().toISOString().slice(0, 10),
-      items: alcohol ? [{ name: "alkohol (skrevet inn)", amount: alcohol, alcohol: true }] : [],
+      items: alcohol ? [{ name: "alkohol (skrevet inn)", amount: alcohol, alcohol: true, typed: true }] : [],
       total,
       typed: true,
       added: new Date().toISOString(),
@@ -381,7 +382,18 @@
       });
       const remove = Object.assign(document.createElement("button"), { textContent: "slett" });
       remove.addEventListener("click", () => confirm("slette denne kvitteringen?") && store.remove(r));
-      box.append(head, totals, table, fixTotal, remove);
+      // The alcohol on it, typed in: for a card slip, a handwritten bill, or anything read wrong.
+      const fixAlcohol = Object.assign(document.createElement("button"), { textContent: "alkohol" });
+      fixAlcohol.addEventListener("click", () => {
+        const answer = prompt("hvor mye av denne kvitteringen var alkohol? (f.eks. 12,50)", String(spending(r).alcohol).replace(".", ","));
+        const alcohol = answer === null ? NaN : Number(answer.trim().replace(",", "."));
+        if (!Number.isFinite(alcohol) || alcohol < 0) return;
+        // The items read stay, all counted as not alcohol, and the typed amount is the alcohol.
+        const items = r.items.filter((i) => !i.typed).map((i) => ({ ...i, alcohol: false }));
+        if (alcohol) items.push({ name: "alkohol (skrevet inn)", amount: alcohol, alcohol: true, typed: true });
+        store.update({ ...r, items, typed: true });
+      });
+      box.append(head, totals, table, fixTotal, fixAlcohol, remove);
       list.append(box);
     }
   }

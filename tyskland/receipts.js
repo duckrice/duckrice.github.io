@@ -7,11 +7,21 @@ const ALCOHOL = [
   "wodka", "vodka", "rum", "gin", "whisky", "whiskey", "korn", "schnaps", "likör", "likoer", "eierlikör", "jägermeister", "jaegermeister", "aperol", "campari", "ramazzotti", "tequila", "ouzo", "sambuca", "amaretto", "baileys", "absinth", "cognac", "brandy", "weinbrand", "obstler", "doppelkorn", "kräuterlikör", "kümmerling", "pfeffi", "asbach", "mariacron", "malibu", "pitu", "licor 43", "strothmann", "küstennebel", "sierra", "metaxa",
   "beck's", "becks", "krombacher", "warsteiner", "bitburger", "paulaner", "erdinger", "franziskaner", "augustiner", "veltins", "jever", "radeberger", "oettinger", "hasseröder", "hasseroeder", "carlsberg", "heineken", "corona", "desperados", "astra", "flensburger", "köstritzer", "berliner kindl", "sternburg", "tannenzäpfle", "rothaus", "löwenbräu", "spaten", "hacker-pschorr", "kilkenny", "guinness", "holsten", "diebels", "schöfferhofer", "einbecker", "wernesgrüner", "kulmbacher", "tucher", "maisel", "weihenstephaner", "hofbräu", "störtebeker", "gösser", "perlenbacher", "karlskrone", "5,0 original", "hansa pils", "paderborner", "feldschlößchen", "ur-krostitzer", "schneider weisse",
   "smirnoff", "bacardi", "havana", "captain morgan", "jack daniel", "jim beam", "absolut", "gorbatschow", "mixery", "mumm", "rotkäppchen", "freixenet", "kleiner feigling", "berentzen", "henkell", "faber", "söhnlein", "kupferberg", "hugo",
+  // In restaurants, bars and breweries.
+  "maß", "mass bier", "festtrunk", "festbier", "zwickel", "kellerbier", "landbier", "urtrunk", "doppelbock", "rauchbier", "schwarzbier", "weisse", "weiße", "berliner weisse", "russ", "russn", "schnitt", "vom fass",
+  "weinschorle", "schoppen", "apfelwein", "ebbelwoi", "äppler", "sauergespritzter", "süßgespritzter", "cidre", "cider", "bowle", "grappa", "limoncello", "averna", "williams", "kurzer", "shot", "longdrink", "cocktail", "mojito", "caipirinha", "cuba libre", "gin tonic", "wodka lemon", "moscow mule", "negroni", "martini", "margarita", "daiquiri", "piña colada", "pina colada", "sex on the beach", "tequila sunrise", "efes", "peroni", "moretti", "estrella", "pilsener urquell", "budweiser", "staropramen", "tsingtao", "sapporo", "asahi", "kirin", "singha", "chang",
 ];
+// Words that are a drink only with a glass size beside them ("Hefe 0,5", "WB Fass 0,5", "1 Halbe").
+const WITH_SIZE = /\b(hefe|hell|helles|dunkel|wb|fass|halbe|viertel|achtel|weiß|weiss|rot|rosé|rose|weizen)\b/i;
+const SIZE = /\b0[,.](1|2|25|3|33|4|5)\s*l?\b|\b0[,.]5[1lI]\b|\b1[,.]0\s*l\b|\b[0-9]\/[0-9]\s*l?\b|\bmaß\b/i;
 // Words that contain a drink word but aren't drinks, and drinks without alcohol.
 const NOT_ALCOHOL = /alkoholfrei|alkohol frei|alc\.? ?frei|0[,.]0 ?%|\b0[,.]0\b|becks? blue|beck's blue|jever fun|clausthaler|weintraub|weinessig|weinbergpfirsich|weingummi|weinblätter|weinblaetter|weinsauerkraut|rumpsteak|ginger|popcorn|körner|koerner|bierschinken|bierwurst|bierstick|bierbeisser|bierkaese|bierkäse|exportschinken|hefe(?!weizen)|weizen(mehl|brot|brötchen|broetchen|toast|kleie|grieß|tortilla|wrap|keim)|hell(e|er|es)? ?(brot|brötchen)|korn(spitz|brot|brötchen)|dunkel(e|es)? ?(brot|schoko)|lagerung|gin(seng|kgo)|hugo boss|helles? (toast|mehl)/i;
 // (After at most one stray mark from the paper's edge: "I SUMME".)
-const TOTAL = /^(?:\S\s+)?(summe|zu zahlen|gesamtbetrag|gesamt|total|endsumme|betrag)\b/i;
+// ("SUMNE", "SVMME": the total's word as a photo may be read.)
+const TOTAL = /^(?:\S\s+)?(s[uvo]m[mn][eo]|zu zahlen|gesamtbetrag|gesamt|total|endsumme|endbetrag|rechnungsbetrag|betrag)\b/i;
+// A subtotal ("ZWS") and the tax lines are no items; the last subtotal is a total if the total can't be read.
+const SUBTOTAL = /^(?:\S\s+)?(zws|zw\.?\s?-?summe|zwischensumme)\b/i;
+const TAX = /^(?:\S\s+)?(mwst|mw\.?st|ust|steuer|netto|brutto|enth(alten|\.)|inkl\.)/i;
 // A deposit, or a discount: it goes with the drink just above it.
 const DEPOSIT = /pfand|\b[pf]f?and\b|leergut/i; // "Ffand": Pfand as a photo is sometimes read
 const DISCOUNT = /rabatt|preisvorteil|vorteil|coupon|nachlass|aktion|ersparnis/i;
@@ -22,9 +32,29 @@ const words = ALCOHOL.map((w) => new RegExp(`(^|[^a-zäöüß])${w.replace(/[.*+
 // Drink words that are often the start of a longer word on receipts ("Pilsener", "Weinbrand", "Bierkasten", "Weißb.").
 const prefixes = ["bier", "wein", "sekt", "pils", "radler", "weißb", "weissb"].map((w) => new RegExp(`(^|[^a-zäöüß])${w}`, "i"));
 
+// Long drink words, for names a photo got one letter wrong ("BORNFELDER").
+const LONG = ALCOHOL.filter((w) => /^[a-zäöüß]{6,}$/.test(w));
+const oneOff = (a, b) => {
+  if (Math.abs(a.length - b.length) > 1) return false;
+  let i = 0, j = 0, edits = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) (i++, j++);
+    else {
+      if (++edits > 1) return false;
+      if (a.length > b.length) i++;
+      else if (b.length > a.length) j++;
+      else (i++, j++);
+    }
+  }
+  return edits + (a.length - i) + (b.length - j) <= 1;
+};
+
 export function isAlcohol(text) {
+  if (/alkoholfrei|alkohol frei|alc\.? ?frei|0[,.]0 ?%|\b0[,.]0\b/i.test(text)) return false;
+  if (WITH_SIZE.test(text) && SIZE.test(text) && !/schorle|saft|wasser|tee|kaffee|milch|kakao/i.test(text) || /weinschorle/i.test(text)) return true;
   if (NOT_ALCOHOL.test(text)) return false;
-  return words.some((re) => re.test(text)) || prefixes.some((re) => re.test(text));
+  if (words.some((re) => re.test(text)) || prefixes.some((re) => re.test(text))) return true;
+  return (text.toLowerCase().match(/[a-zäöüß]{6,}/g) ?? []).some((t) => LONG.some((w) => oneOff(t, w)));
 }
 
 // The cents as printed: a photo may add a stray third digit ("0,993") or read a 0 as O or C ("0,C8").
@@ -39,11 +69,15 @@ const money = (s) =>
   );
 // A price at the end of a line, maybe with a minus, € or EUR, and the tax letter ("1,29 A", "0,30- B", "-0,50").
 // (";" is how a photo's comma is sometimes read.)
-const PRICE = /^(.*?)\s*(-?\s?\d{1,4}(?:[.,]\d{3})*[.,;]\s?[\dOoC]{2}\d?)\s*(-)?\s*(?:€|EUR)?\s*[A-Z*]{0,2}\s*\*?$/;
+// The euro sign may come first ("€14.50"), and the tax class may be a digit ("23,80 1").
+const PRICE = /^(.*?)\s*(?:€|EUR|£)?\s*(-?\s?\d{1,4}(?:[.,]\d{3})*[.,;]\s?[\dOoC]{2}\d?)\s*(-)?\s*(?:€|EUR)?\s*(?:[A-Z*]{1,2}|\d)?\s*\*?$/;
 // A quantity or weight: "2 x", "2 Stk x", "0,856 kg x 1,29 EUR/kg" (the unit may be misread: "2 Sik x").
 const QUANTITY = /^\d+(?:[.,]\d+)?\s*(?:kg|[a-z]{1,3}\.?\s*[x×]|[x×])(?![a-zäöü])/i;
+// A quantity line with nothing else ("2 Stk x 1,29", "0,856 kg x 1,29 EUR/kg"): a breakdown, not an item.
+// "2 x Maß Helles" is an item: there is a name after the count.
+const breakdown = (name) => QUANTITY.test(name) && !/[a-zäöüß]{3}/i.test(name.replace(QUANTITY, "").replace(/\b(eur|kg|stk|stück)\b|€|\//gi, ""));
 // Below the items: how it was paid. A receipt whose total couldn't be read stops here.
-const PAYMENT = /^(?:\S\s+)?(kartenzahlung|girocard|ec[- ]?karte|ec-cash|bar|visa|mastercard|maestro|geg(eben|\.)|zahlung|rückgeld|rueckgeld|kreditkarte|v pay)\b/i;
+const PAYMENT = /^(?:\S\s+)?(?:(kartenzahlung|girocard|ec[- ]?karte|ec-cash|bar|visa|mastercard|maestro|gegeben|zahlung|rückgeld|rueckgeld|zurück|kreditkarte|v pay)\b|geg\.)|\b(ec[\s-]*cash|ec[\s-]*karte|girocard|kartenzahlung|rückgeld)\b/i;
 const AMOUNTS = /\d[.,;]\s?\d{2}(?!\d)/g;
 // A name followed by its count and unit price ("Pfand Mehrweg   2 x 0,08", "Pils 0,5l   0,79 x 6").
 const COUNTED = /\s+(?:\d+\s*[x×]\s*\d{1,4}[.,]\d{2}|\d{1,4}[.,]\d{2}\s*[x×]\s*\d+)\s*$/i;
@@ -58,7 +92,7 @@ export function parseReceipt(text) {
     .map((l) => l.trim().replace(/^[|\[\]{}()!;'‘’"]+\s*/, "").replace(/\s*[|\[\]{}()!;'‘’"]+$/, ""))
     .filter(Boolean);
   const items = [];
-  let total = null;
+  let total = null, subtotal = null;
   // A name whose price comes on the next line (weighed goods, several of a kind).
   let pending = null;
   const add = (name, amount) => {
@@ -67,33 +101,44 @@ export function parseReceipt(text) {
     items.push({ name, amount, alcohol: DEPOSIT.test(name) || DISCOUNT.test(name) ? Boolean(follows) : isAlcohol(name) });
   };
   for (const line of lines) {
-    if (PAYMENT.test(line)) break;
-    // A tax table's row ("A 19% 0,92 4,82 5,74"): three amounts are never one item.
-    if ((line.match(AMOUNTS) ?? []).length >= 3) continue;
+    // (A card slip alone has the payment first, then its amount.)
+    if (PAYMENT.test(line) && items.length) break;
+    // A tax table's row ("A 19% 0,92 4,82 5,74"): amounts and no name. ("Weinschorle 0,25  2 x 4,20  8,40" is an item.)
+    if ((line.match(AMOUNTS) ?? []).length >= 3 && !/[a-zäöüß]{3}/i.test(line)) continue;
+    // A date or a time ("Datum 21.11.2020", "16:52") is never an item.
+    if (/\b\d{1,2}[.\/]\d{1,2}[.\/]\d{2,4}\b|\b\d{1,2}:\d{2}\b/.test(line)) continue;
     const m = PRICE.exec(line);
     if (!m) {
       // A name alone, or a name with its count: the price follows.
       const name = line.replace(COUNTED, "").trim();
-      pending = /[a-zäöü]{3}/i.test(name) && !QUANTITY.test(name) ? name : null;
+      pending = /[a-zäöü]{3}/i.test(name) && !breakdown(name) && !TAX.test(name) ? name : null;
       continue;
     }
-    // Dot leaders ("Milch ..... 0,99") go; an abbreviation's dot ("halbtr.") stays.
-    let name = m[1].replace(/(\s|\.{2,}|[:*])+$/, "").trim();
+    // Dot leaders ("Milch ..... 0,99") go; an abbreviation's dot ("halbtr.") stays; a euro sign goes.
+    let name = m[1].replace(/(\s|\.{2,}|[:*€£$])+$/, "").trim();
     let amount = money(m[2]);
+    // After the total, the same amount again is how it was paid, however that line was read.
+    if (total !== null && amount === total && !TOTAL.test(name) && items.length) break;
     // A discount takes money off, even when its minus wasn't printed or read.
     if ((m[3] || DISCOUNT.test(m[1])) && amount > 0) amount = -amount;
     if (TOTAL.test(name)) {
-      // Everything below the total is payment, tax and the card slip.
+      // Some tills print a running "Summe" between items: the last one is the total. The payment ends it.
       total = amount;
-      break;
+      pending = null;
+      continue;
+    }
+    if (SUBTOTAL.test(name) || TAX.test(name)) {
+      if (SUBTOTAL.test(name)) subtotal = amount;
+      pending = null;
+      continue;
     }
     if (COUNTED.test(` ${name} ${m[2]}`) && /\d\s*[x×]$/i.test(name)) {
       // "Augustiner Hell 0,5l   2 x 1,29": the line total comes next; "2 x 0,89" alone is a breakdown.
       const rest = name.replace(/\s*\d+\s*[x×]$/i, "").trim();
-      pending = /[a-zäöü]{3}/i.test(rest) && !QUANTITY.test(rest) ? rest : null;
+      pending = /[a-zäöü]{3}/i.test(rest) && !breakdown(rest) ? rest : null;
       continue;
     }
-    if (!name || QUANTITY.test(name)) {
+    if (!name || breakdown(name)) {
       // A price alone, or a weight line: it belongs to the name above, if that is still waiting.
       if (pending) add(pending, amount);
       pending = null;
@@ -109,6 +154,7 @@ export function parseReceipt(text) {
     const above = items.slice(0, -1).reduce((s, i) => s + i.amount, 0);
     if (Math.abs(last - above) <= 0.06) total = items.pop().amount;
   }
+  total ??= subtotal;
   // The date: the first real day and month (not a phone number).
   let iso = null;
   for (const d of text.matchAll(/(?<!\d)(\d{1,2})[.\/](\d{1,2})[.\/](\d{4}|\d{2})(?!\d)/g)) {
@@ -118,7 +164,16 @@ export function parseReceipt(text) {
     }
   }
   const sum = Math.round(items.reduce((s, i) => s + i.amount, 0) * 100) / 100;
-  const store = lines.slice(0, 5).find((l) => CHAINS.test(l)) ?? lines.find((l) => /[a-zäöü]{3}/i.test(l)) ?? "";
+  // The shop: a chain's name, else a line naming a place to eat or drink, else the first line that is
+  // mostly letters (a logo read as text is mostly marks).
+  const top = lines.slice(0, 8);
+  const wordy = (l) => (l.match(/[a-zäöüß]/gi) ?? []).length >= l.replace(/\s/g, "").length * 0.8 && /[a-zäöüß]{4}/i.test(l);
+  const store =
+    top.find((l) => CHAINS.test(l)) ??
+    top.find((l) => /brauerei|brauhaus|restaurant|ristorante|gaststätte|gasthaus|gasthof|wirtshaus|biergarten|kneipe|café|cafe|bistro|imbiss|grill|pizzeria|bäckerei|tankstelle|hotel|bar\b/i.test(l)) ??
+    top.find(wordy) ??
+    lines.find((l) => /[a-zäöü]{3}/i.test(l)) ??
+    "";
   return { store, date: iso, items, total: total ?? sum };
 }
 
