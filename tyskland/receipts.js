@@ -200,6 +200,31 @@ export function parseReceipt(text) {
   return { store, date: iso, items, total: total ?? sum };
 }
 
+/**
+ * Who pays whom to even out: everything but alcohol is shared equally between `people`, alcohol stays
+ * with whoever bought it. `paid` is each person's spending without alcohol. The fewest payments, in cents.
+ */
+export function settle(people, paid) {
+  const cents = people.map((p) => Math.round((paid[p] ?? 0) * 100));
+  const share = cents.reduce((a, b) => a + b, 0) / people.length;
+  // Above zero: is owed money; below: owes. The odd cent left by sharing is ignored.
+  const balance = people.map((p, i) => ({ p, left: Math.round(cents[i] - share) }));
+  const owed = balance.filter((b) => b.left > 0).sort((a, b) => b.left - a.left);
+  const owing = balance.filter((b) => b.left < 0).sort((a, b) => a.left - b.left);
+  const out = [];
+  for (const debtor of owing) {
+    for (const creditor of owed) {
+      if (debtor.left >= -1) break;
+      const amount = Math.min(-debtor.left, creditor.left);
+      if (amount <= 1) continue;
+      out.push({ from: debtor.p, to: creditor.p, amount: amount / 100 });
+      debtor.left += amount;
+      creditor.left -= amount;
+    }
+  }
+  return out;
+}
+
 /** What a receipt counts for: its total without the alcohol on it. */
 export function spending(receipt) {
   const alcohol = receipt.items.filter((i) => i.alcohol).reduce((s, i) => s + i.amount, 0);

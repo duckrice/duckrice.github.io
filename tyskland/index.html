@@ -118,10 +118,11 @@
 <div id="overviewView" class="hidden">
   <p class="muted">uten alkohol er det som teller. alkohol er tatt ut (pant for drikke med).</p>
   <table id="summary"></table>
+  <div id="settle"></div>
 </div>
 
 <script type="module">
-  import { notAnItem, parseReceipt, spending } from "./receipts.js";
+  import { notAnItem, parseReceipt, settle, spending } from "./receipts.js";
   import { firebaseConfig } from "./config.js";
   import { readPaper } from "./photo.js";
 
@@ -351,6 +352,15 @@
         render();
       });
     }
+
+    // Evening out: what's not alcohol is shared by the four; alcohol is each one's own.
+    const payments = settle(PEOPLE, Object.fromEntries(PEOPLE.map((name) => [name, people.get(name).counted])));
+    $("settle").replaceChildren(
+      Object.assign(document.createElement("p"), { textContent: `oppgjør: ${kr(all.counted)} delt på ${PEOPLE.length} er ${kr(all.counted / PEOPLE.length)} hver.`, className: "muted" }),
+      ...(payments.length
+        ? payments.map((p) => Object.assign(document.createElement("p"), { textContent: `${p.from} betaler ${p.to} ${kr(p.amount)}` }))
+        : [Object.assign(document.createElement("p"), { textContent: all.count ? "alle har betalt like mye." : "", className: "ok" })]),
+    );
 
     // Whose receipts to show: everyone's, or one person's.
     $("filter").replaceChildren(
