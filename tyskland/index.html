@@ -81,6 +81,22 @@
   td:first-child {
     overflow-wrap: anywhere;
   }
+  /* The receipt shown over the page. */
+  .viewer {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    overflow: auto;
+    padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+    background: #0b0b0b;
+  }
+  .viewer canvas,
+  .viewer img {
+    display: block;
+    max-width: 100%;
+    margin: 0 0 16px;
+    background: #ffffff;
+  }
   button.on {
     border-color: #4ade80;
     color: #4ade80;
@@ -106,7 +122,6 @@
   <p id="who">hvem er du?<br></p>
   <p>
     <label class="button">+ kvittering (pdf/bilde)<input id="files" type="file" accept="application/pdf,image/*" multiple></label>
-    <label class="button">+ ta bilde<input id="camera" type="file" accept="image/*" capture="environment"></label>
     <button id="typed">+ skriv inn total</button>
   </p>
   <p id="status" class="muted"></p>
@@ -194,10 +209,29 @@
       for (const r of receipts) if (r.items.some((i) => notAnItem(i.name))) store.update(withoutSumme(r));
       render();
     }, (e) => ($("status").textContent = `kunne ikke hente kvitteringene: ${e.message}`));
+    // The receipts' own files (the PDF or photo), in pieces under Firestore's 1 MB a document, read only when shown.
+    const files = fs.collection(db, "trips", tripCode, "files");
+    const PIECE = 900_000;
     store = {
-      add: (r) => fs.addDoc(col, r),
+      add: async (r) => (await fs.addDoc(col, r)).id,
       update: (r) => fs.setDoc(fs.doc(col, r.id), (({ id, ...rest }) => rest)(r)),
-      remove: (r) => fs.deleteDoc(fs.doc(col, r.id)),
+      remove: async (r) => {
+        await fs.deleteDoc(fs.doc(col, r.id));
+        for (let i = 0; i < (r.attachment?.parts ?? 0); i++) await fs.deleteDoc(fs.doc(files, `${r.id}-${i}`)).catch(() => {});
+      },
+      saveFile: async (id, bytes, type) => {
+        const parts = Math.ceil(bytes.length / PIECE);
+        for (let i = 0; i < parts; i++) await fs.setDoc(fs.doc(files, `${id}-${i}`), { receipt: id, i, parts, type, data: fs.Bytes.fromUint8Array(bytes.subarray(i * PIECE, (i + 1) * PIECE)) });
+        await fs.updateDoc(fs.doc(col, id), { attachment: { type, parts, size: bytes.length } });
+      },
+      loadFile: async (id, parts) => {
+        const pieces = [];
+        for (let i = 0; i < parts; i++) pieces.push((await fs.getDoc(fs.doc(files, `${id}-${i}`))).data().data.toUint8Array());
+        const out = new Uint8Array(pieces.reduce((s, p) => s + p.length, 0));
+        let at = 0;
+        for (const p of pieces) (out.set(p, at), (at += p.length));
+        return out;
+      },
     };
     // The link to send the group: whoever opens it sees and adds to the same receipts.
     const link = `${location.origin}${location.pathname}#${tripCode}`;
@@ -212,7 +246,12 @@
     const save = () => (localStorage.setItem("tyskland.receipts", JSON.stringify(receipts)), render());
     receipts = JSON.parse(localStorage.getItem("tyskland.receipts") ?? "[]").map(withoutSumme);
     store = {
-      add: async (r) => (receipts.push({ id: crypto.randomUUID?.() ?? String(Date.now() + Math.random()), ...r }), save()),
+      add: async (r) => {
+        const id = crypto.randomUUID?.() ?? String(Date.now() + Math.random());
+        receipts.push({ id, ...r });
+        save();
+        return id;
+      },
       update: async (r) => (receipts = receipts.map((x) => (x.id === r.id ? r : x)), save()),
       remove: async (r) => (receipts = receipts.filter((x) => x.id !== r.id), save()),
     };
@@ -281,6 +320,20 @@
     return text;
   }
 
+  /** The receipt's file as it is kept: a photo at most 1600 px as JPEG, a PDF up to 5 MB as it is. */
+  async function keepable(file) {
+    if (/pdf/i.test(file.type) || /\.pdf$/i.test(file.name)) {
+      if (file.size > 5_000_000) throw new Error("PDF-en er større enn 5 MB.");
+      return { bytes: new Uint8Array(await file.arrayBuffer()), type: "application/pdf" };
+    }
+    const big = await smaller(file);
+    const scale = Math.min(1, 1600 / Math.max(big.width, big.height));
+    const canvas = Object.assign(document.createElement("canvas"), { width: Math.round(big.width * scale), height: Math.round(big.height * scale) });
+    canvas.getContext("2d").drawImage(big, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise((ok) => canvas.toBlob(ok, "image/jpeg", 0.8));
+    return { bytes: new Uint8Array(await blob.arrayBuffer()), type: "image/jpeg" };
+  }
+
   async function addFiles(files) {
     const person = me;
     if (!person) {
@@ -288,22 +341,34 @@
       return;
     }
     let n = 0;
+    const unsaved = [];
     for (const file of files) {
       $("status").textContent = `leser ${file.name} (${++n}/${files.length})…`;
       try {
         const parsed = parseReceipt(await readFile(file));
         // A card slip has only its total: kept, and its alcohol can be set with "alkohol".
         if (!parsed.items.length && !(parsed.total > 0)) throw new Error("fant ingen varer med pris. prøv et skarpere bilde.");
-        await store.add({ person, ...parsed, file: file.name, added: new Date().toISOString() });
+        const id = await store.add({ person, ...parsed, file: file.name, added: new Date().toISOString() });
+        // The receipt itself, to look at later: a photo made smaller (still sharp enough to read), a PDF as it is.
+        if (store.saveFile) {
+          try {
+            const kept = await keepable(file);
+            await store.saveFile(id, kept.bytes, kept.type);
+          } catch (e) {
+            unsaved.push(`${file.name} (${e.message ?? e})`);
+          }
+        }
       } catch (e) {
         $("status").textContent = `kunne ikke lese ${file.name}: ${e.message ?? e} du kan også trykke "+ skriv inn total".`;
         return;
       }
     }
-    $("status").textContent = `${files.length} kvittering${files.length === 1 ? "" : "er"} lagt til. sjekk at alkoholen (gul, gjennomstreket) stemmer.`;
+    $("status").textContent =
+      `${files.length} kvittering${files.length === 1 ? "" : "er"} lagt til. sjekk at alkoholen (gul, gjennomstreket) stemmer.` +
+      (unsaved.length ? ` men selve kvitteringen ble ikke lagret for: ${unsaved.join(", ")}.` : "");
   }
   // A receipt that can't be read (or was lost): its total typed in, and how much of it was alcohol.
-  const number = (answer) => (answer === null ? null : Number(answer.trim().replace(/s/g, "").replace(",", ".")));
+  const number = (answer) => (answer === null ? null : Number(answer.trim().replace(/\s/g, "").replace(",", ".")));
   $("typed").addEventListener("click", async () => {
     if (!me) {
       $("status").textContent = "velg hvem du er først (AA, AR, RJ eller FR).";
@@ -325,7 +390,49 @@
     });
     $("status").textContent = "kvitteringen er lagt til.";
   });
-  for (const input of [$("files"), $("camera")]) input.addEventListener("change", () => (addFiles([...input.files]), (input.value = "")));
+  $("files").addEventListener("change", () => (addFiles([...$("files").files]), ($("files").value = "")));
+
+  // ---- the receipt itself, over the page ------------------------------------------------------
+  async function showReceipt(r) {
+    const layer = Object.assign(document.createElement("div"), { className: "viewer" });
+    const close = Object.assign(document.createElement("button"), { textContent: "lukk" });
+    const what = Object.assign(document.createElement("p"), { className: "muted", textContent: `${r.person} · ${r.store} · henter kvitteringen…` });
+    const pages = document.createElement("div");
+    layer.append(close, what, pages);
+    const onKey = (e) => e.key === "Escape" && shut();
+    const shut = () => {
+      layer.remove();
+      document.body.style.overflow = "";
+      removeEventListener("keydown", onKey);
+    };
+    close.addEventListener("click", shut);
+    addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+    document.body.append(layer);
+    try {
+      const bytes = await store.loadFile(r.id, r.attachment.parts);
+      what.textContent = `${r.person} · ${r.store}`;
+      if (r.attachment.type === "application/pdf") {
+        const lib = await pdfjs();
+        const pdf = await lib.getDocument({ data: bytes }).promise;
+        for (let n = 1; n <= pdf.numPages; n++) {
+          const page = await pdf.getPage(n);
+          // As wide as the screen allows, drawn sharp for the phone's screen.
+          const width = Math.min(layer.clientWidth - 32, 900);
+          const scale = (width / page.getViewport({ scale: 1 }).width) * (window.devicePixelRatio || 1);
+          const viewport = page.getViewport({ scale });
+          const canvas = Object.assign(document.createElement("canvas"), { width: viewport.width, height: viewport.height });
+          canvas.style.width = `${width}px`;
+          await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+          pages.append(canvas);
+        }
+      } else {
+        pages.append(Object.assign(document.createElement("img"), { src: URL.createObjectURL(new Blob([bytes], { type: r.attachment.type })), alt: "kvitteringen" }));
+      }
+    } catch (e) {
+      what.textContent = `kunne ikke hente kvitteringen: ${e.message ?? e}`;
+    }
+  }
 
   // ---- showing it: who spent what (without alcohol), then each receipt ------------------------
   function render() {
@@ -415,7 +522,14 @@
         if (alcohol) items.push({ name: "alkohol (skrevet inn)", amount: alcohol, alcohol: true, typed: true });
         store.update({ ...r, items, typed: true });
       });
-      box.append(head, totals, table, fixTotal, fixAlcohol, remove);
+      const shown = [head, totals, table, fixTotal, fixAlcohol, remove];
+      // The receipt itself, shown over the page (no new window or tab).
+      if (r.attachment && store.loadFile) {
+        const view = Object.assign(document.createElement("button"), { textContent: "vis kvittering" });
+        view.addEventListener("click", () => showReceipt(r));
+        shown.splice(3, 0, view);
+      }
+      box.append(...shown);
       list.append(box);
     }
   }
