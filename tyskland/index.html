@@ -121,7 +121,7 @@
 <div id="receiptsView">
   <p id="who">hvem er du?<br></p>
   <p>
-    <label class="button">+ kvittering (pdf/bilde)<input id="files" type="file" accept="application/pdf,image/*" multiple></label>
+    <label class="button">+ kvittering (pdf)<input id="files" type="file" accept="application/pdf,.pdf" multiple></label>
     <button id="typed">+ skriv inn total</button>
   </p>
   <p id="status" class="muted"></p>
@@ -320,19 +320,9 @@
     return text;
   }
 
-  /** The receipt's file as it is kept: a photo at most 1600 px as JPEG, a PDF up to 5 MB as it is. */
-  async function keepable(file) {
-    if (/pdf/i.test(file.type) || /\.pdf$/i.test(file.name)) {
-      if (file.size > 5_000_000) throw new Error("PDF-en er større enn 5 MB.");
-      return { bytes: new Uint8Array(await file.arrayBuffer()), type: "application/pdf" };
-    }
-    const big = await smaller(file);
-    const scale = Math.min(1, 1600 / Math.max(big.width, big.height));
-    const canvas = Object.assign(document.createElement("canvas"), { width: Math.round(big.width * scale), height: Math.round(big.height * scale) });
-    canvas.getContext("2d").drawImage(big, 0, 0, canvas.width, canvas.height);
-    const blob = await new Promise((ok) => canvas.toBlob(ok, "image/jpeg", 0.8));
-    return { bytes: new Uint8Array(await blob.arrayBuffer()), type: "image/jpeg" };
-  }
+  /** The receipt's PDF, kept as it is. */
+  const keepable = async (file) => ({ bytes: new Uint8Array(await file.arrayBuffer()), type: "application/pdf" });
+  const isPdf = (file) => /pdf/i.test(file.type) || /\.pdf$/i.test(file.name);
 
   async function addFiles(files) {
     const person = me;
@@ -342,6 +332,12 @@
     }
     let n = 0;
     const unsaved = [];
+    // Only PDFs saved on the phone first: nothing is photographed straight into the page.
+    const refused = files.filter((f) => !isPdf(f) || f.size > 5_000_000);
+    if (refused.length) {
+      $("status").textContent = `bare PDF-er på opptil 5 MB kan legges til: ${refused.map((f) => f.name).join(", ")}`;
+      return;
+    }
     for (const file of files) {
       $("status").textContent = `leser ${file.name} (${++n}/${files.length})…`;
       try {
